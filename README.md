@@ -75,6 +75,12 @@ The following screenshots are from the project implementation and infrastructure
 
 ![Grafana request metrics](screenshots/06-grafana-request-metrics.png)
 
+### Testing
+
+**Pytest terminal output — all tests passing**
+
+![Pytest terminal output](screenshots/07-pytest-terminal-output.png)
+
 ### CI/CD automation
 
 **Jenkins pipeline execution**
@@ -118,7 +124,7 @@ The following screenshots are from the project implementation and infrastructure
 
 ![Terraform EC2 network details](screenshots/21-terraform-ec2-network-details.png)
 
-![Terraform terminal output](screenshots/07-terraform-terminal-output.png)
+![Pytest terminal output](screenshots/07-pytest-terminal-output.png)
 
 ![Grafana dashboard editor](screenshots/04-grafana-dashboard-editor.png)
 
@@ -362,6 +368,10 @@ Prometheus is configured to scrape the application metrics endpoint every 15 sec
 ## Testing
 
 Tests are implemented with Pytest and FastAPI's TestClient. The test suite uses a separate SQLite database configuration to ensure isolation from the PostgreSQL production database.
+
+**Pytest results — 3 passed in 3.71 seconds:**
+
+![Pytest terminal output](screenshots/07-pytest-terminal-output.png)
 
 The test suite covers:
 

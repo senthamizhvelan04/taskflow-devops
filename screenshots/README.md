@@ -10,7 +10,7 @@ All screenshots are retained from the uploaded evidence archive and renamed for 
 | `04-grafana-dashboard-editor.png` | Grafana dashboard editor |
 | `05-grafana-taskflow-availability.png` | Grafana availability dashboard |
 | `06-grafana-request-metrics.png` | Grafana request metrics |
-| `07-terraform-terminal-output.png` | Terraform terminal output |
+| `07-pytest-terminal-output.png` | Pytest terminal output (3/3 passed) |
 | `08-jenkins-pipeline-console.png` | Jenkins pipeline console |
 | `09-github-webhook-settings.png` | GitHub webhook settings |
 | `10-taskflow-web-application.png` | TaskFlow web application |
