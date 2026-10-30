@@ -9,6 +9,31 @@
 [![Jenkins](https://img.shields.io/badge/CI%2FCD-Jenkins-D24939)](https://www.jenkins.io/)
 [![Monitoring](https://img.shields.io/badge/Monitoring-Prometheus%20%7C%20Grafana-E6522C)](https://prometheus.io/)
 
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Screenshots](#screenshots)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Application Features](#application-features)
+- [API Endpoints](#api-endpoints)
+- [API Usage Examples](#api-usage-examples)
+- [AWS Infrastructure with Terraform](#aws-infrastructure-with-terraform)
+- [CI/CD with Jenkins and GitHub Webhooks](#cicd-with-jenkins-and-github-webhooks)
+- [Docker and Docker Compose](#docker-and-docker-compose)
+- [Monitoring and Observability](#monitoring-and-observability)
+- [Testing](#testing)
+- [Run Locally with Docker Compose](#run-locally-with-docker-compose)
+- [AI-Assisted Engineering](#ai-assisted-engineering)
+- [Repository Structure](#repository-structure)
+- [Security Notes and Current Limitations](#security-notes-and-current-limitations)
+- [Potential Next Improvements](#potential-next-improvements)
+- [Author](#author)
+
+---
+
 ## Overview
 
 TaskFlow is a task-management web application built with **FastAPI and PostgreSQL** and used as the workload for a practical AWS Cloud/DevOps implementation. The project brings together two separately managed EC2 environments, Terraform-based infrastructure provisioning, GitHub webhook integration with Jenkins, Docker-based application services, automated tests, and Prometheus/Grafana monitoring.
@@ -161,6 +186,92 @@ flowchart TD
 | GET | `/metrics` | Prometheus metrics endpoint |
 | GET | `/docs` | Interactive API documentation |
 
+### API Usage Examples
+
+**Create a task:**
+
+```bash
+curl -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Configure Jenkins pipeline", "description": "Set up CI/CD for TaskFlow", "priority": "high"}'
+```
+
+```json
+{
+  "id": 1,
+  "title": "Configure Jenkins pipeline",
+  "description": "Set up CI/CD for TaskFlow",
+  "priority": "high",
+  "status": "todo",
+  "created_at": "2026-10-30T11:00:00+00:00"
+}
+```
+
+**List all tasks:**
+
+```bash
+curl http://localhost:8000/api/tasks
+```
+
+**Filter tasks by status:**
+
+```bash
+curl http://localhost:8000/api/tasks?status=in_progress
+```
+
+**Update a task (partial update):**
+
+```bash
+curl -X PATCH http://localhost:8000/api/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"status": "in_progress"}'
+```
+
+```json
+{
+  "id": 1,
+  "title": "Configure Jenkins pipeline",
+  "description": "Set up CI/CD for TaskFlow",
+  "priority": "high",
+  "status": "in_progress",
+  "created_at": "2026-10-30T11:00:00+00:00"
+}
+```
+
+**Delete a task:**
+
+```bash
+curl -X DELETE http://localhost:8000/api/tasks/1
+```
+
+Returns `204 No Content` on success.
+
+**Check application health:**
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{
+  "status": "healthy",
+  "service": "taskflow-api"
+}
+```
+
+**Check database readiness:**
+
+```bash
+curl http://localhost:8000/ready
+```
+
+```json
+{
+  "status": "ready",
+  "database": "connected"
+}
+```
+
 ## AWS Infrastructure with Terraform
 
 Terraform provisions a dedicated TaskFlow network and EC2 environment. The checked-in configuration defines:
@@ -175,22 +286,33 @@ Terraform provisions a dedicated TaskFlow network and EC2 environment. The check
 
 The configured region is `eu-north-1`, with the availability zone derived from the configured region. AMI, key pair, region, and allowed SSH source are provided through Terraform variables.
 
-### Terraform workflow
+### Terraform Variables
+
+| Variable | Description | Default | Required |
+|---|---|---|---|
+| `region` | AWS region for the TaskFlow environment | `eu-north-1` | No |
+| `key_name` | Existing EC2 key pair name | `devops` | No |
+| `ami` | AMI ID for the EC2 instance | `ami-021aaf3749be66813` | No |
+| `my_ip` | Your public IPv4 address in CIDR notation (e.g. `203.0.113.50/32`) | — | **Yes** |
+
+> **Note:** `my_ip` has no default value and must be provided. Without it, `terraform plan` will prompt for input or fail. You can supply it via a `terraform.tfvars` file (gitignored) or the `-var` flag.
+
+### Terraform Workflow
 
 ```bash
 cd terraform
 terraform init
 terraform fmt
 terraform validate
-terraform plan
-terraform apply
+terraform plan -var="my_ip=YOUR_PUBLIC_IP/32"
+terraform apply -var="my_ip=YOUR_PUBLIC_IP/32"
 terraform output
 ```
 
 To remove resources created by this configuration:
 
 ```bash
-terraform destroy
+terraform destroy -var="my_ip=YOUR_PUBLIC_IP/32"
 ```
 
 Review the plan carefully before applying or destroying infrastructure. The current security group permits TCP port `8000` from `0.0.0.0/0`; this is convenient for the demo but should be restricted or placed behind a controlled ingress layer before production use.
@@ -219,12 +341,12 @@ The Dockerfile uses `python:3.12-slim`, installs application dependencies, copie
 
 The Compose configuration defines:
 
-| Service | Role |
-|---|---|
-| `app` | FastAPI application container |
-| `db` | PostgreSQL 16 database |
-| `prometheus` | Optional metrics collection service |
-| `grafana` | Optional monitoring dashboard service |
+| Service | Role | Port |
+|---|---|---|
+| `app` | FastAPI application container | `8000` (public) |
+| `db` | PostgreSQL 16 database | Internal only |
+| `prometheus` | Optional metrics collection service | `127.0.0.1:9090` |
+| `grafana` | Optional monitoring dashboard service | `127.0.0.1:3000` |
 
 The application waits for PostgreSQL's health check. The app has a readiness health check, and named volumes preserve PostgreSQL, Prometheus, and Grafana data across container recreation. Prometheus and Grafana are enabled with the `monitoring` Compose profile and their host ports bind to localhost (`127.0.0.1`).
 
@@ -239,7 +361,15 @@ Prometheus is configured to scrape the application metrics endpoint every 15 sec
 
 ## Testing
 
-Tests are implemented with Pytest and FastAPI's TestClient. The test suite uses a separate SQLite database configuration.
+Tests are implemented with Pytest and FastAPI's TestClient. The test suite uses a separate SQLite database configuration to ensure isolation from the PostgreSQL production database.
+
+The test suite covers:
+
+| Test | What it validates |
+|---|---|
+| `test_health` | `/health` returns `200` with `{"status": "healthy"}` |
+| `test_task_lifecycle` | Full CRUD: create → update status → list → delete → verify removal |
+| `test_invalid_priority` | Invalid priority value `"urgent"` returns `422` (Pydantic validation) |
 
 Run locally:
 
@@ -254,9 +384,11 @@ The Jenkins pipeline runs tests in a disposable `python:3.12-slim` container bef
 
 ### Prerequisites
 
-- Git
-- Docker Engine
-- Docker Compose plugin
+| Tool | Minimum Version | Purpose |
+|---|---|---|
+| [Git](https://git-scm.com/) | 2.30+ | Clone the repository |
+| [Docker Engine](https://docs.docker.com/engine/install/) | 20.10+ | Build and run containers |
+| [Docker Compose](https://docs.docker.com/compose/install/) | v2.0+ (Compose plugin) | Orchestrate multi-container services |
 
 ### 1. Clone the repository
 
@@ -267,14 +399,20 @@ cd taskflow-devops
 
 ### 2. Create `.env`
 
-Create a `.env` file in the repository root:
+Copy the example environment file and update the passwords:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and replace the placeholder values with strong passwords:
 
 ```env
 POSTGRES_PASSWORD=replace_with_a_strong_password
 GRAFANA_PASSWORD=replace_with_a_strong_password
 ```
 
-Do not commit `.env` or real credentials.
+> **Warning:** Do not commit `.env` or real credentials. The `.gitignore` is already configured to exclude `.env` files.
 
 ### 3. Start the application and database
 
@@ -291,15 +429,19 @@ docker compose --profile monitoring up -d
 
 ### 5. Open the application
 
-- Application: `http://localhost:8000`
-- API documentation: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
-- Readiness: `http://localhost:8000/ready`
-- Metrics: `http://localhost:8000/metrics`
-- Prometheus: `http://localhost:9090` (host-local binding)
-- Grafana: `http://localhost:3000` (host-local binding; username `admin`, password from `GRAFANA_PASSWORD`)
+| Service | URL | Notes |
+|---|---|---|
+| Application | http://localhost:8000 | TaskFlow web interface |
+| API documentation | http://localhost:8000/docs | Interactive Swagger UI |
+| Health check | http://localhost:8000/health | Application liveness |
+| Readiness check | http://localhost:8000/ready | Database connectivity |
+| Metrics | http://localhost:8000/metrics | Prometheus scrape endpoint |
+| Prometheus | http://localhost:9090 | Host-local binding; requires monitoring profile |
+| Grafana | http://localhost:3000 | Username: `admin`, password: your `GRAFANA_PASSWORD` |
 
-To stop the stack while preserving named volumes:
+### 6. Stop the stack
+
+To stop while preserving named volumes:
 
 ```bash
 docker compose --profile monitoring down
@@ -317,27 +459,31 @@ ChatGPT was used as an engineering assistant during development for learning and
 taskflow-devops/
 ├── app/
 │   ├── static/
-│   ├── database.py
-│   ├── main.py
-│   ├── models.py
-│   └── schemas.py
+│   │   └── index.html          # Single-page frontend (vanilla JS)
+│   ├── __init__.py
+│   ├── database.py             # SQLAlchemy engine and session factory
+│   ├── main.py                 # FastAPI app, routes, middleware, metrics
+│   ├── models.py               # Task ORM model
+│   └── schemas.py              # Pydantic request/response schemas
 ├── monitoring/
-│   ├── grafana-datasource.yml
-│   └── prometheus.yml
-├── screenshots/
+│   ├── grafana-datasource.yml  # Provisioned Prometheus data source
+│   └── prometheus.yml          # Scrape configuration
+├── screenshots/                # Project implementation evidence
 ├── terraform/
-│   ├── ec2.tf
-│   ├── main.tf
-│   ├── outputs.tf
-│   ├── provider.tf
-│   └── variable.tf
+│   ├── ec2.tf                  # EC2 instance definition
+│   ├── main.tf                 # VPC, subnet, IGW, routes, security group
+│   ├── outputs.tf              # Exported resource identifiers
+│   ├── provider.tf             # AWS provider configuration
+│   └── variable.tf             # Input variables
 ├── tests/
-│   └── test_api.py
-├── Dockerfile
-├── Jenkinsfile
-├── compose.yaml
-├── requirements.txt
-└── requirements-dev.txt
+│   └── test_api.py             # Pytest API test suite
+├── .env.example                # Template for required environment variables
+├── .gitignore
+├── Dockerfile                  # Python 3.12-slim, non-root user
+├── Jenkinsfile                 # 5-stage declarative pipeline
+├── compose.yaml                # App, DB, Prometheus, Grafana
+├── requirements.txt            # Production dependencies
+└── requirements-dev.txt        # Test dependencies (pytest, httpx)
 ```
 
 ## Security Notes and Current Limitations
