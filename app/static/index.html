@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskFlow | Task Management</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#687386; --line:#e4e8ef; --accent:#315efb; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif; background:#f5f7fb; color:var(--ink); }
+    header { background:#111a2e; color:white; padding:26px max(22px,calc((100% - 1050px)/2)); }
+    header h1 { margin:0 0 5px; font-size:27px; } header p { margin:0; color:#c5cde0; }
+    main { max-width:1050px; margin:28px auto; padding:0 18px; }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+    .stat,.panel { background:white; border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 4px 18px #15254a08; }
+    .stat span { color:var(--muted); font-size:13px; } .stat strong { display:block; font-size:28px; margin-top:7px; }
+    .layout { display:grid; grid-template-columns: minmax(250px, .8fr) minmax(0,1.5fr); gap:18px; align-items:start; }
+    h2 { font-size:17px; margin:0 0 16px; }
+    label { display:block; font-size:13px; color:var(--muted); margin:12px 0 6px; }
+    input,textarea,select { width:100%; border:1px solid #d9dfeb; border-radius:8px; padding:10px 11px; font:inherit; background:white; }
+    textarea { resize:vertical; min-height:80px; }
+    button { border:0; border-radius:8px; background:var(--accent); color:white; padding:10px 13px; font-weight:650; cursor:pointer; }
+    button.secondary { background:#edf1ff; color:#2948b9; } button.danger { background:#fff0f0; color:#b42318; }
+    .submit { width:100%; margin-top:15px; } .task { border:1px solid var(--line); border-radius:11px; padding:14px; margin-top:10px; }
+    .tasktop { display:flex; justify-content:space-between; gap:10px; align-items:start; }
+    .task h3 { margin:0; font-size:15px; overflow-wrap:anywhere; } .task p { color:var(--muted); font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+    .chip { background:#f0f3f8; border-radius:99px; padding:4px 8px; font-size:11px; color:#4b566a; }
+    .high { background:#ffe9e7; color:#b42318; } .done { background:#e4f8ed; color:#137547; }
+    .actions { display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; } .actions button { font-size:12px; padding:7px 9px; }
+    .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; } .toolbar select { max-width:160px; }
+    #message { min-height:20px; color:var(--muted); font-size:13px; margin-top:10px; }
+    .empty { color:var(--muted); padding:25px 0; text-align:center; font-size:14px; }
+    footer { text-align:center; color:var(--muted); padding:25px; font-size:12px; }
+    @media(max-width:720px) { .layout { grid-template-columns:1fr; } .stats { gap:8px; } .stat { padding:13px; } .stat strong { font-size:23px; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>TaskFlow</h1>
+  <p>A simple task manager built for a DevOps-ready application stack.</p>
+</header>
+<main>
+  <section class="stats">
+    <div class="stat"><span>Total tasks</span><strong id="total">0</strong></div>
+    <div class="stat"><span>In progress</span><strong id="progress">0</strong></div>
+    <div class="stat"><span>Completed</span><strong id="completed">0</strong></div>
+  </section>
+  <section class="layout">
+    <div class="panel">
+      <h2>Create a task</h2>
+      <form id="task-form">
+        <label for="title">Task title</label>
+        <input id="title" name="title" maxlength="120" required placeholder="e.g. Configure Jenkins pipeline">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" maxlength="2000" placeholder="What needs to be done?"></textarea>
+        <label for="priority">Priority</label>
+        <select id="priority" name="priority">
+          <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>
+        </select>
+        <button class="submit" type="submit">Add task</button>
+        <div id="message" role="status"></div>
+      </form>
+    </div>
+    <div class="panel">
+      <div class="toolbar">
+        <h2>Tasks</h2>
+        <select id="filter" aria-label="Filter tasks">
+          <option value="all">All tasks</option><option value="todo">To do</option>
+          <option value="in_progress">In progress</option><option value="done">Completed</option>
+        </select>
+      </div>
+      <div id="tasks"><div class="empty">Loading tasks…</div></div>
+    </div>
+  </section>
+</main>
+<footer>TaskFlow · FastAPI · PostgreSQL · Prometheus-ready</footer>
+<script>
+  const api = "/api/tasks";
+  const $ = (id) => document.getElementById(id);
+  let allTasks = [];
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    })[char]);
+  }
+  function statusLabel(status) {
+    return ({todo:"To do", in_progress:"In progress", done:"Completed"})[status] || status;
+  }
+  async function request(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: {"Content-Type":"application/json", ...(options.headers || {})}
+    });
+    if (!response.ok) {
+      let detail = `Request failed (${response.status})`;
+      try { const body = await response.json(); detail = body.detail || detail; } catch {}
+      throw new Error(detail);
+    }
+    if (response.status === 204) return null;
+    return response.json();
+  }
+  function render() {
+    $("total").textContent = allTasks.length;
+    $("progress").textContent = allTasks.filter(t => t.status === "in_progress").length;
+    $("completed").textContent = allTasks.filter(t => t.status === "done").length;
+    const filter = $("filter").value;
+    const visible = filter === "all" ? allTasks : allTasks.filter(t => t.status === filter);
+    if (!visible.length) {
+      $("tasks").innerHTML = '<div class="empty">No tasks here yet. Add one to get started.</div>';
+      return;
+    }
+    $("tasks").innerHTML = visible.map(task => `
+      <article class="task">
+        <div class="tasktop"><h3>${escapeHtml(task.title)}</h3>
+          <span class="chip ${task.status === "done" ? "done" : ""}">${escapeHtml(statusLabel(task.status))}</span>
+        </div>
+        ${task.description ? `<p>${escapeHtml(task.description)}</p>` : ""}
+        <div class="chips">
+          <span class="chip ${task.priority === "high" ? "high" : ""}">${escapeHtml(task.priority)} priority</span>
+          <span class="chip">Task #${task.id}</span>
+        </div>
+        <div class="actions">
+          <button class="secondary" data-action="next" data-id="${task.id}">${task.status === "todo" ? "Start task" : task.status === "in_progress" ? "Mark complete" : "Reopen task"}</button>
+          <button class="danger" data-action="delete" data-id="${task.id}">Delete</button>
+        </div>
+      </article>`).join("");
+  }
+  async function loadTasks() {
+    try { allTasks = await request(api); render(); }
+    catch (error) { $("tasks").innerHTML = `<div class="empty">${escapeHtml(error.message)}. Check the API and database.</div>`; }
+  }
+  $("task-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      title: String(form.get("title")).trim(),
+      description: String(form.get("description") || "").trim(),
+      priority: form.get("priority")
+    };
+    if (!payload.title) { $("message").textContent = "Please enter a task title."; return; }
+    try {
+      await request(api, {method:"POST", body:JSON.stringify(payload)});
+      event.currentTarget.reset();
+      $("priority").value = "medium";
+      $("message").textContent = "Task created successfully.";
+      await loadTasks();
+    } catch (error) { $("message").textContent = error.message; }
+  });
+  $("filter").addEventListener("change", render);
+  $("tasks").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const id = Number(button.dataset.id);
+    const task = allTasks.find(item => item.id === id);
+    if (!task) return;
+    try {
+      if (button.dataset.action === "delete") {
+        if (!confirm(`Delete "${task.title}"?`)) return;
+        await request(`${api}/${id}`, {method:"DELETE"});
+      } else {
+        const next = ({todo:"in_progress", in_progress:"done", done:"todo"})[task.status];
+        await request(`${api}/${id}`, {method:"PATCH", body:JSON.stringify({status:next})});
+      }
+      await loadTasks();
+    } catch (error) { alert(error.message); }
+  });
+  loadTasks();
+</script>
+</body>
+</html>

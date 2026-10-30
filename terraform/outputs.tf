@@ -1,0 +1,19 @@
+output "vpc_id" {
+  value = aws_vpc.taskflow.id
+}
+
+output "public_subnet_id" {
+  value = aws_subnet.public.id
+}
+
+output "app_security_group_id" {
+  value = aws_security_group.app.id
+}
+
+output "instance_id" {
+  value = aws_instance.taskflow.id
+}
+
+output "public_ip" {
+  value = aws_instance.taskflow.public_ip
+}
